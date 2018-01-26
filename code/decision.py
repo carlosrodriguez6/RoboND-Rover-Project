@@ -12,8 +12,9 @@ def decision_step(Rover):
     # Example:
     # Check if we have vision data to make decisions with
     if Rover.nav_angles is not None:
+        print("Current Nav angle: {}".format(np.mean(Rover.nav_angles * 180 / np.pi)))
         # Check for Rover.mode status
-        if Rover.mode == 'forward': 
+        if Rover.mode == 'forward':
             # Check the extent of navigable terrain
             if len(Rover.nav_angles) >= Rover.stop_forward:  
                 # If mode is forward, navigable terrain looks good 
