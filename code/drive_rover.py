@@ -43,11 +43,11 @@ class RoverState():
         self.img = None # Current camera image
         self.pos = None # Current position (x, y)
         self.yaw = None # Current yaw angle
-        self.pitch = None # Current pitch angle
-        self.roll = None # Current roll angle
-        self.vel = None # Current velocity
-        self.steer = 0 # Current steering angle
-        self.throttle = 0 # Current throttle value
+        self.pitch = None  # Current pitch angle
+        self.roll = None  # Current roll angle
+        self.vel = None  # Current velocity
+        self.steer = 0  # Current steering angle
+        self.throttle = 0  # Current throttle value
         self.brake = 0 # Current brake value
         self.nav_angles = None # Angles of navigable terrain pixels
         self.nav_dists = None # Distances of navigable terrain pixels
