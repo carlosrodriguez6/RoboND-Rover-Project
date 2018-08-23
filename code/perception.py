@@ -18,7 +18,7 @@ def color_thresh(img, rgb_thresh=(160, 160, 160)):
     return color_select
 
 def color_thresh_upper_lower(img, rgb_thresh_upper=(255, 255, 255), rgb_thresh_lower=(0,0,0)):
-    # Create an array of 1's the same size in x and y as the image
+    # Create an array of zeros the same size in x and y as the image
     # but just a single channel
     color_select = np.zeros_like(img[:, :, 0])
     
@@ -33,6 +33,18 @@ def color_thresh_upper_lower(img, rgb_thresh_upper=(255, 255, 255), rgb_thresh_l
     color_select[three_channel_mask] = 1
     return color_select
 
+
+# The picels for a rock appear to be both higher than 110 on the red and green channels
+# and lower than 50 on the blue channel
+def findRocks(img, rgb_thresh=(110, 110, 50)):
+    rockpix = ((img[:, :, 0] > rgb_thresh[0]) \
+               & (img[:, :, 1] > rgb_thresh[1]) \
+               & (img[:, :, 2] < rgb_thresh[2]))
+
+    color_select = np.zeros_like(img[:, :, 0])
+    color_select[rockpix] = 1
+    return color_select
+
 # Define a function to convert from image coords to rover coords
 def rover_coords(binary_img):
     # Identify nonzero pixels
@@ -43,23 +55,24 @@ def rover_coords(binary_img):
     y_pixel = -(xpos - binary_img.shape[1]/2).astype(np.float)
     return x_pixel, y_pixel
 
-
 # Define a function to convert to radial coords in rover space
 def to_polar_coords(x_pixel, y_pixel):
     # Convert (x_pixel, y_pixel) to (distance, angle) 
     # in polar coordinates in rover space
     # Calculate distance to each pixel
     dist = np.sqrt(x_pixel**2 + y_pixel**2)
-    # Calculate angle away from vertical for each pixel
+    # Calculate angle away from dead ahead for each pixel
     angles = np.arctan2(y_pixel, x_pixel)
     return dist, angles
 
 # Define a function to map rover space pixels to world space
 def rotate_pix(xpix, ypix, yaw):
+
     # Convert yaw to radians
     yaw_rad = yaw * np.pi / 180
+
+    # perform polar equation.
     xpix_rotated = (xpix * np.cos(yaw_rad)) - (ypix * np.sin(yaw_rad))
-                            
     ypix_rotated = (xpix * np.sin(yaw_rad)) + (ypix * np.cos(yaw_rad))
     # Return the result  
     return xpix_rotated, ypix_rotated
@@ -91,12 +104,16 @@ def perspect_transform(img, src, dst):
            
     m = cv2.getPerspectiveTransform(src, dst)
     warped = cv2.warpPerspective(img, m, (img.shape[1], img.shape[0]))  # keep same size as input image
+    mask = cv2.warpPerspective(np.ones_like(img[:, :, 0]), m, (img.shape[1], img.shape[0]))
 
-    return warped
+    return warped, mask
 
 
 # Apply the above functions in succession and update the Rover state accordingly
 def perception_step(Rover):
+    # if not ((Rover.pitch < 1 or Rover.pitch > 359) and (Rover.roll < 3 or Rover.roll > 357)):
+    #     return Rover
+
     # Perform perception steps to update Rover()
     # NOTE: camera image is coming to you in Rover.img
     image = Rover.img
@@ -115,17 +132,22 @@ def perception_step(Rover):
                   ])
 
     # 2) Apply perspective transform
-    warped = perspect_transform(image, source, destination)
+    warped, mask = perspect_transform(image, source, destination)
 
     # 3) Apply color threshold to identify navigable terrain/obstacles/rock samples
 
     threshed = color_thresh(warped)
 
-    yellow_threshed = color_thresh_upper_lower(warped, rgb_thresh_upper=(255, 255, 50),
-                                               rgb_thresh_lower=(110, 110, 0))
+    #yellow_threshed = color_thresh_upper_lower(warped, rgb_thresh_upper=(255, 255, 50),
+     #                                          rgb_thresh_lower=(110, 110, 0))
 
-    threshold_obstacles = color_thresh_upper_lower(warped, rgb_thresh_upper=(160, 160, 160), 
-                                                rgb_thresh_lower=(0, 0, 0))
+    yellow_threshed = findRocks(warped)
+
+    #threshold_obstacles = color_thresh_upper_lower(warped, rgb_thresh_upper=(160, 160, 160),
+    #                                           rgb_thresh_lower=(0, 0, 0))
+
+    # to simplify things, define the obstacles image as the inverse of the terrain.
+    threshold_obstacles = np.absolute(np.float32(threshed) - 1) * mask
 
     # 4) Update Rover.vision_image (this will be displayed on left side of screen)
     # Example: Rover.vision_image[:,:,0] = obstacle color-thresholded binary image
@@ -164,8 +186,13 @@ def perception_step(Rover):
 
         # Since there is a chance that the indexes of these arrays may overlap, give the navigable
         # pixels more weight and let the create_output_images function decide.
-        Rover.worldmap[navigable_y_world, navigable_x_world, 2] += 10
+        #Rover.worldmap[navigable_y_world, navigable_x_world, 2] += 10
+        Rover.worldmap[navigable_y_world, navigable_x_world, 2] = 255
         Rover.worldmap[obs_y_world, obs_x_world, 0] += 1
+
+        navigable_mask = Rover.worldmap[:,:,2] > 0
+
+        Rover.worldmap[navigable_mask, 0] = 0
 
         Rover.worldmap[rock_y_world, rock_x_world, 1] = 255
 
@@ -173,6 +200,46 @@ def perception_step(Rover):
     distances, angles = to_polar_coords(xpix, ypix)
 
     # Update Rover pixel distances and angles
+
+    # what if I filter the angles to only be the ones corresponding to a certain distance?
+
+    if distances.any():
+        max_distance = max(distances)
+        print("max distance: {}", max_distance)
+        min_distance = min(distances)
+        print("min distance: {}", min_distance)
+        matching_angles = angles.tolist()
+        matching_distances = distances.tolist()
+        index_angle_for_max = matching_distances.index(max_distance)
+        angle_for_max = matching_angles[index_angle_for_max]
+        print("angle for max distance: {}", angle_for_max)
+    else:
+        max_distance = 0
+        min_distance = 0
+        angle_for_max = None
+
+
+    # foo = [idx for idx in range(len(distances)) if distances[idx] > 19]
+    #
+    # matching_angles = [angles[i] for i in foo]
+    # matching_distances = [distances[i] for i in foo]
+    #
+    # if matching_angles:
+    #     distances = np.asarray(matching_distances)
+    #     angles = np.asarray(matching_angles)
+    # else:
+    #     matching_angles = angles.tolist()
+    #     matching_distances = distances.tolist()
+
+    # matching_angles = angles.tolist()
+    # matching_distances = distances.tolist()
+    # index_angle_for_max = matching_distances.index(max_distance)
+    # angle_for_max = matching_angles[index_angle_for_max]
+    # print("angle for max distance: {}", angle_for_max)
+
+    if angle_for_max is not None:
+        Rover.angle_for_max_distance = angle_for_max
+
     Rover.nav_dists = distances
     Rover.nav_angles = angles
     

@@ -15,6 +15,24 @@ def decision_step(Rover):
         print("Current Nav angle: {}".format(np.mean(Rover.nav_angles * 180 / np.pi)))
         # Check for Rover.mode status
         if Rover.mode == 'forward':
+
+            # We're stuck, go to stop mode to attempt to rotate in place
+            if Rover.vel < 0.05:
+                Rover.throttle = 0
+                # Release the brake to allow turning
+                Rover.brake = 0
+                # Turn range is +/- 15 degrees, when stopped the next line will induce 4-wheel turning
+                #Rover.steer = -15  # Could be more clever here about which way to turn
+                Rover.mode = 'stop'
+                return Rover
+
+            if Rover.steer_counter == 3000:
+                Rover.steer = 0
+                Rover.steer_counter = 0
+                return Rover
+            elif np.abs(Rover.steer) == 15:
+                Rover.steer_counter += np.abs(Rover.steer)
+
             # Check the extent of navigable terrain
             if len(Rover.nav_angles) >= Rover.stop_forward:  
                 # If mode is forward, navigable terrain looks good 
@@ -60,6 +78,7 @@ def decision_step(Rover):
                     Rover.brake = 0
                     # Set steer to mean angle
                     Rover.steer = np.clip(np.mean(Rover.nav_angles * 180/np.pi), -15, 15)
+                    #Rover.steer = np.clip(Rover.angle_for_max_distance * 180/np.pi, -10, 10)
                     Rover.mode = 'forward'
     # Just to make the rover do something 
     # even if no modifications have been made to the code
