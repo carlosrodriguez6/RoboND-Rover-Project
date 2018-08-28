@@ -55,6 +55,7 @@ def rover_coords(binary_img):
     y_pixel = -(xpos - binary_img.shape[1]/2).astype(np.float)
     return x_pixel, y_pixel
 
+
 # Define a function to convert to radial coords in rover space
 def to_polar_coords(x_pixel, y_pixel):
     # Convert (x_pixel, y_pixel) to (distance, angle) 
@@ -67,7 +68,6 @@ def to_polar_coords(x_pixel, y_pixel):
 
 # Define a function to map rover space pixels to world space
 def rotate_pix(xpix, ypix, yaw):
-
     # Convert yaw to radians
     yaw_rad = yaw * np.pi / 180
 
@@ -111,9 +111,6 @@ def perspect_transform(img, src, dst):
 
 # Apply the above functions in succession and update the Rover state accordingly
 def perception_step(Rover):
-    # if not ((Rover.pitch < 1 or Rover.pitch > 359) and (Rover.roll < 3 or Rover.roll > 357)):
-    #     return Rover
-
     # Perform perception steps to update Rover()
     # NOTE: camera image is coming to you in Rover.img
     image = Rover.img
@@ -138,13 +135,7 @@ def perception_step(Rover):
 
     threshed = color_thresh(warped)
 
-    #yellow_threshed = color_thresh_upper_lower(warped, rgb_thresh_upper=(255, 255, 50),
-     #                                          rgb_thresh_lower=(110, 110, 0))
-
     yellow_threshed = findRocks(warped)
-
-    #threshold_obstacles = color_thresh_upper_lower(warped, rgb_thresh_upper=(160, 160, 160),
-    #                                           rgb_thresh_lower=(0, 0, 0))
 
     # to simplify things, define the obstacles image as the inverse of the terrain.
     threshold_obstacles = np.absolute(np.float32(threshed) - 1) * mask
@@ -160,7 +151,6 @@ def perception_step(Rover):
 
     # 5) Convert map image pixel values to rover-centric coords
     xpix, ypix = rover_coords(threshed)
-    xpix_rock, ypix_rock = rover_coords(yellow_threshed)
     xpix_obs, ypix_obs = rover_coords(threshold_obstacles)
 
     world_size = Rover.worldmap.shape[0]
@@ -170,76 +160,36 @@ def perception_step(Rover):
     navigable_x_world, navigable_y_world = pix_to_world(xpix, ypix, Rover.pos[0], 
                                                         Rover.pos[1], Rover.yaw, world_size, scale)
 
-    rock_x_world, rock_y_world = pix_to_world(xpix_rock, ypix_rock, Rover.pos[0], 
-                                                        Rover.pos[1], Rover.yaw, world_size, scale)
-    
-    obs_x_world, obs_y_world = pix_to_world(xpix_obs, ypix_obs, Rover.pos[0], 
+    obs_x_world, obs_y_world = pix_to_world(xpix_obs, ypix_obs, Rover.pos[0],
                                                          Rover.pos[1], Rover.yaw, world_size, scale)
+
+    if yellow_threshed.any():
+        xpix_rock, ypix_rock = rover_coords(yellow_threshed)
+        rock_x_world, rock_y_world = pix_to_world(xpix_rock, ypix_rock, Rover.pos[0],
+                                                        Rover.pos[1], Rover.yaw, world_size, scale)
+        rock_distances, rock_angles = to_polar_coords(xpix_rock, ypix_rock)
+        rock_idx = np.argmin(rock_distances)
+        rock_x = rock_x_world[rock_idx]
+        rock_y = rock_y_world[rock_idx]
+
+        Rover.worldmap[rock_y, rock_x, 1] = 255
+        Rover.vision_image[:,:,1] = yellow_threshed * 255
+    else:
+        Rover.vision_image[:, :, 1] = 0
 
     # 7) Update Rover worldmap (to be displayed on right side of screen)
     # Example: Rover.worldmap[obstacle_y_world, obstacle_x_world, 0] += 1
     #          Rover.worldmap[rock_y_world, rock_x_world, 1] += 1
 
-    # Increase fidelity by being very selective with which images I choose to make the map.
-    # If my pitch or roll are more than +/- 1 the perspective transform may no longer be valid.
-    if (Rover.pitch < 1 or Rover.pitch > 359) and (Rover.roll < 3 or Rover.roll > 357):
-
-        # Since there is a chance that the indexes of these arrays may overlap, give the navigable
-        # pixels more weight and let the create_output_images function decide.
-        #Rover.worldmap[navigable_y_world, navigable_x_world, 2] += 10
-        Rover.worldmap[navigable_y_world, navigable_x_world, 2] = 255
-        Rover.worldmap[obs_y_world, obs_x_world, 0] += 1
-
-        navigable_mask = Rover.worldmap[:,:,2] > 0
-
-        Rover.worldmap[navigable_mask, 0] = 0
-
-        Rover.worldmap[rock_y_world, rock_x_world, 1] = 255
+    # Since there is a chance that the indexes of these arrays may overlap, give the navigable
+    # pixels more weight and let the create_output_images function decide.
+    Rover.worldmap[navigable_y_world, navigable_x_world, 2] += 10
+    Rover.worldmap[obs_y_world, obs_x_world, 0] += 1
 
     # 8) Convert rover-centric pixel positions to polar coordinates
     distances, angles = to_polar_coords(xpix, ypix)
 
     # Update Rover pixel distances and angles
-
-    # what if I filter the angles to only be the ones corresponding to a certain distance?
-
-    if distances.any():
-        max_distance = max(distances)
-        print("max distance: {}", max_distance)
-        min_distance = min(distances)
-        print("min distance: {}", min_distance)
-        matching_angles = angles.tolist()
-        matching_distances = distances.tolist()
-        index_angle_for_max = matching_distances.index(max_distance)
-        angle_for_max = matching_angles[index_angle_for_max]
-        print("angle for max distance: {}", angle_for_max)
-    else:
-        max_distance = 0
-        min_distance = 0
-        angle_for_max = None
-
-
-    # foo = [idx for idx in range(len(distances)) if distances[idx] > 19]
-    #
-    # matching_angles = [angles[i] for i in foo]
-    # matching_distances = [distances[i] for i in foo]
-    #
-    # if matching_angles:
-    #     distances = np.asarray(matching_distances)
-    #     angles = np.asarray(matching_angles)
-    # else:
-    #     matching_angles = angles.tolist()
-    #     matching_distances = distances.tolist()
-
-    # matching_angles = angles.tolist()
-    # matching_distances = distances.tolist()
-    # index_angle_for_max = matching_distances.index(max_distance)
-    # angle_for_max = matching_angles[index_angle_for_max]
-    # print("angle for max distance: {}", angle_for_max)
-
-    if angle_for_max is not None:
-        Rover.angle_for_max_distance = angle_for_max
-
     Rover.nav_dists = distances
     Rover.nav_angles = angles
     
