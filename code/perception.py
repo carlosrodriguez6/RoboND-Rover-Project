@@ -17,26 +17,9 @@ def color_thresh(img, rgb_thresh=(160, 160, 160)):
     # Return the binary image
     return color_select
 
-def color_thresh_upper_lower(img, rgb_thresh_upper=(255, 255, 255), rgb_thresh_lower=(0,0,0)):
-    # Create an array of zeros the same size in x and y as the image
-    # but just a single channel
-    color_select = np.zeros_like(img[:, :, 0])
-    
-    # Apply the thresholds for RGB and assign 1's 
-    # where threshold was exceeded
-    # Return the single-channel binary image
-    
-    three_channel_mask = (rgb_thresh_upper[0] >= img[:, :, 0]) & (img[:, :, 0] > rgb_thresh_lower[0])  \
-                        & (rgb_thresh_upper[1] >= img[:, :, 1]) & (img[:, :, 1] > rgb_thresh_lower[1]) \
-                        & (rgb_thresh_upper[2] > img[:, :, 2]) & (img[:, :, 2] >= rgb_thresh_lower[2])
-
-    color_select[three_channel_mask] = 1
-    return color_select
-
-
-# The picels for a rock appear to be both higher than 110 on the red and green channels
+# The pixels for a rock appear to be both higher than 110 on the red and green channels
 # and lower than 50 on the blue channel
-def findRocks(img, rgb_thresh=(110, 110, 50)):
+def find_rocks(img, rgb_thresh=(110, 110, 50)):
     rockpix = ((img[:, :, 0] > rgb_thresh[0]) \
                & (img[:, :, 1] > rgb_thresh[1]) \
                & (img[:, :, 2] < rgb_thresh[2]))
@@ -98,7 +81,6 @@ def pix_to_world(xpix, ypix, xpos, ypos, yaw, world_size, scale):
     # Return the result
     return x_pix_world, y_pix_world
 
-
 # Define a function to perform a perspective transform
 def perspect_transform(img, src, dst):
            
@@ -135,7 +117,7 @@ def perception_step(Rover):
 
     threshed = color_thresh(warped)
 
-    yellow_threshed = findRocks(warped)
+    yellow_threshed = find_rocks(warped)
 
     # to simplify things, define the obstacles image as the inverse of the terrain.
     threshold_obstacles = np.absolute(np.float32(threshed) - 1) * mask
